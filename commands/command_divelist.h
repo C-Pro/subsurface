@@ -229,6 +229,23 @@ public:
 	SplitDiveComputer(dive *d, int dc_num);
 };
 
+class SplitFreediveSession : public DiveListBase {
+public:
+	SplitFreediveSession(dive *originalDive,
+			     std::vector<std::unique_ptr<dive>> splitDives,
+			     dive_site *existingSite,
+			     std::unique_ptr<dive_site> newSite);
+private:
+	void undoit() override;
+	void redoit() override;
+	bool workToBeDone() override;
+
+	DivesAndSitesToRemove diveToRemove;
+	DivesAndTripsToAdd splitDivesToAdd;
+	DivesAndTripsToAdd originalDiveToAdd;
+	DivesAndSitesToRemove splitDivesToRemove;
+};
+
 // When manipulating dive computers (moving, deleting) we go the ineffective,
 // but simple and robust way: We keep two full copies of the dive (before and after).
 // Removing and readding assures that the dive stays at the correct

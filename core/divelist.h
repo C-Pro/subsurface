@@ -41,6 +41,7 @@ struct dive_table : public sorted_owning_table<dive, &comp_dives> {
 	std::array<std::unique_ptr<dive>, 2> split_divecomputer(const struct dive &src, int num) const;
 	std::array<std::unique_ptr<dive>, 2> split_dive(const struct dive &dive) const;
 	std::array<std::unique_ptr<dive>, 2> split_dive_at_time(const struct dive &dive, duration_t time) const;
+	std::vector<std::unique_ptr<dive>> split_freedive_session(const struct dive &src) const;
 	merge_result merge_dives(const std::vector<dive *> &dives) const;
 	std::unique_ptr<dive> try_to_merge(const struct dive &a, const struct dive &b, bool prefer_downloaded) const;
 	bool has_dive(unsigned int deviceid, unsigned int diveid) const;

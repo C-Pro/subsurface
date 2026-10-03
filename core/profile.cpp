@@ -244,9 +244,17 @@ static void calculate_max_limits_new(const struct dive *dive, const struct divec
 	auto process_dc = [&] (const divecomputer &dc) {
 		int lastdepth = 0;
 
-		/* Make sure we can fit all events */
-		if (!dc.events.empty())
-			maxtime = std::max(maxtime, dc.events.back().time.seconds);
+		/* Make sure we can fit all valid events within the dive */
+		if (!dc.events.empty()) {
+			int max_sample_time = dc.samples.empty() ? dc.duration.seconds : dc.samples.back().time.seconds;
+			int max_allowed_time = max_sample_time > 0 ? max_sample_time + 300 : 24 * 3600;
+			for (auto it = dc.events.rbegin(); it != dc.events.rend(); ++it) {
+				if (it->time.seconds <= max_allowed_time) {
+					maxtime = std::max(maxtime, it->time.seconds);
+					break;
+				}
+			}
+		}
 
 		for (auto &s: dc.samples) {
 			int depth = s.depth.mm;
@@ -346,7 +354,8 @@ static void populate_plot_entries(const struct dive *dive, const struct divecomp
 	 * that has time > maxtime (because there can be surface samples
 	 * past "maxtime" in the original sample data)
 	 */
-	size_t nr = dc->samples.size() + 6 + pi.maxtime / 10 + dc->events.size();
+	size_t maxtime_entries = pi.maxtime > 0 ? std::min((size_t)pi.maxtime / 10, (size_t)86400) : 0;
+	size_t nr = dc->samples.size() + 6 + maxtime_entries + dc->events.size();
 	pi.entry.reserve(nr);
 	pi.pressures.reserve(nr * pi.nr_cylinders);
 
@@ -447,6 +456,9 @@ static void populate_plot_entries(const struct dive *dive, const struct divecomp
 	/* Add any remaining events */
 	while (evit != dc->events.end()) {
 		int time = evit->time.seconds;
+
+		if (time > pi.maxtime)
+			break;
 
 		if (time > lasttime) {
 			insert_entry(pi, evit->time.seconds, 0_m, 0);

@@ -858,6 +858,68 @@ SplitDiveComputer::SplitDiveComputer(dive *d, int dc_num) :
 	setText(Command::Base::tr("split dive computer"));
 }
 
+SplitFreediveSession::SplitFreediveSession(dive *originalDive,
+					   std::vector<std::unique_ptr<dive>> splitDives,
+					   dive_site *existingSite,
+					   std::unique_ptr<dive_site> newSite)
+{
+	if (!originalDive || splitDives.empty())
+		return;
+
+	diveToRemove.dives.push_back(originalDive);
+
+	auto newTrip = std::make_unique<dive_trip>();
+	dive_site *targetSite = existingSite;
+	if (newSite) {
+		targetSite = newSite.get();
+		newTrip->location = newSite->name;
+		splitDivesToAdd.sites.push_back(std::move(newSite));
+	} else if (existingSite) {
+		newTrip->location = existingSite->name;
+	} else {
+		newTrip->location = originalDive->get_location();
+	}
+
+	dive_trip *tripPtr = newTrip.get();
+	splitDivesToAdd.trips.push_back(std::move(newTrip));
+
+	splitDivesToAdd.dives.resize(splitDives.size());
+	for (size_t i = 0; i < splitDives.size(); ++i) {
+		splitDives[i]->selected = false;
+		splitDives[i]->dive_site = nullptr;
+		splitDives[i]->divetrip = nullptr;
+
+		splitDivesToAdd.dives[i].dive = std::move(splitDives[i]);
+		splitDivesToAdd.dives[i].trip = tripPtr;
+		splitDivesToAdd.dives[i].site = targetSite;
+	}
+
+	setText(Command::Base::tr("process freedive session"));
+}
+
+bool SplitFreediveSession::workToBeDone()
+{
+	return !diveToRemove.dives.empty() && !splitDivesToAdd.dives.empty();
+}
+
+void SplitFreediveSession::redoit()
+{
+	splitDivesToRemove = addDives(splitDivesToAdd);
+	originalDiveToAdd = removeDives(diveToRemove);
+
+	if (!splitDivesToRemove.dives.empty())
+		setSelection(splitDivesToRemove.dives, splitDivesToRemove.dives[0], -1);
+}
+
+void SplitFreediveSession::undoit()
+{
+	diveToRemove = addDives(originalDiveToAdd);
+	splitDivesToAdd = removeDives(splitDivesToRemove);
+
+	if (!diveToRemove.dives.empty())
+		setSelection(diveToRemove.dives, diveToRemove.dives[0], -1);
+}
+
 DiveComputerBase::DiveComputerBase(dive *old_dive, std::unique_ptr<dive> new_dive, int dc_nr_before, int dc_nr_after) :
 	dc_nr_before(dc_nr_before),
 	dc_nr_after(dc_nr_after)

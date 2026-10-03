@@ -53,6 +53,10 @@ void createTrip(const QVector<dive *> &divesToAddIn);
 void autogroupDives();
 void mergeTrips(dive_trip *trip1, dive_trip *trip2);
 void splitDives(dive *d, duration_t time);
+void splitFreediveSession(dive *originalDive,
+			  std::vector<std::unique_ptr<dive>> splitDives,
+			  dive_site *existingSite,
+			  std::unique_ptr<dive_site> newSite);
 void splitDiveComputer(dive *d, int dc_num);
 void moveDiveComputerToFront(dive *d, int dc_num);
 void deleteDiveComputer(dive *d, int dc_num);
