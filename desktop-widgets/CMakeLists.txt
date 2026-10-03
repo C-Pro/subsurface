@@ -94,6 +94,8 @@ set(SUBSURFACE_INTERFACE
 	filterwidget.h
 	findmovedimagesdialog.cpp
 	findmovedimagesdialog.h
+	freedivesessiondialog.cpp
+	freedivesessiondialog.h
 	groupedlineedit.cpp
 	groupedlineedit.h
 	importgps.cpp

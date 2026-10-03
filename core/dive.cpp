@@ -679,7 +679,17 @@ static void fixup_dc_events(struct dive &dive, struct divecomputer &dc)
 	divemode_t current_divemode = dc.divemode;
 	struct cylinder_t *current_cylinder = dive.get_cylinder(0);
 	divemode_t new_divemode;
+	int max_dive_time = dc.duration.seconds;
+	if (!dc.samples.empty())
+		max_dive_time = std::max(max_dive_time, dc.samples.back().time.seconds);
+	int max_allowed_time = max_dive_time > 0 ? max_dive_time + 300 : 24 * 3600;
+
 	for (auto [idx, event]: enumerated_range(dc.events)) {
+		if (event.time.seconds < 0 || event.time.seconds > max_allowed_time) {
+			to_delete.push_back(idx);
+			continue;
+		}
+
 		if (event.name == "bookmark" || event.name == "heading")
 			continue;
 

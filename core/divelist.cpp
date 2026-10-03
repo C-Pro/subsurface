@@ -25,6 +25,7 @@
 #include "version.h"
 
 #include <time.h>
+#include <limits>
 
 void dive_table::record_dive(std::unique_ptr<dive> d)
 {
@@ -1101,6 +1102,154 @@ std::array<std::unique_ptr<dive>, 2> dive_table::split_dive_at_time(const struct
 	if (idx < 1)
 		return {};
 	return split_dive_at(dive, static_cast<int>(idx), static_cast<int>(idx - 1));
+}
+
+std::vector<std::unique_ptr<dive>> dive_table::split_freedive_session(const struct dive &src) const
+{
+	if (src.dcs.empty())
+		return {};
+
+	const struct divecomputer &primary = src.dcs[0];
+	if (primary.divemode != FREEDIVE || primary.samples.size() < 3)
+		return {};
+
+	struct segment {
+		size_t begin;
+		size_t end; // exclusive
+	};
+
+	std::vector<segment> segments;
+	size_t start = 0;
+	size_t surface_start = 0;
+	bool at_surface = primary.samples[0].depth.mm < SURFACE_THRESHOLD;
+	bool has_underwater = !at_surface;
+
+	for (size_t i = 1; i < primary.samples.size(); ++i) {
+		const bool cur_surface = primary.samples[i].depth.mm < SURFACE_THRESHOLD;
+		if (cur_surface == at_surface)
+			continue;
+
+		at_surface = cur_surface;
+		if (at_surface) {
+			surface_start = i;
+			continue;
+		}
+
+		if (has_underwater && surface_start > start) {
+			const int64_t dt = int64_t(primary.samples[i - 1].time.seconds) -
+					   primary.samples[surface_start].time.seconds;
+			if (dt >= 10) {
+				segments.push_back({ start, surface_start + 1 });
+				start = i - 1;
+			}
+		}
+		has_underwater = true;
+	}
+
+	if (has_underwater) {
+		const size_t end = at_surface ? surface_start + 1 : primary.samples.size();
+		if (end > start)
+			segments.push_back({ start, end });
+	}
+
+	if (segments.size() < 2)
+		return {};
+
+	for (const auto &seg : segments) {
+		if (seg.end - seg.begin < 3)
+			return {};
+	}
+
+	std::vector<int32_t> origins;
+	origins.reserve(segments.size());
+	for (const auto &seg : segments)
+		origins.push_back(primary.samples[seg.begin].time.seconds);
+
+	std::vector<std::unique_ptr<dive>> result;
+	result.reserve(segments.size());
+
+	for (size_t idx = 0; idx < segments.size(); ++idx) {
+		const auto &seg = segments[idx];
+		auto d = std::make_unique<struct dive>(src);
+		d->id = dive_getUniqID();
+		d->divetrip = nullptr;
+		d->selected = false;
+		d->pictures.clear();
+		d->invalidate_cache();
+		if (idx > 0)
+			d->number = 0;
+
+		const int32_t t0 = origins[idx];
+		const int32_t t1 = primary.samples[seg.end - 1].time.seconds;
+		d->when = src.when + t0;
+
+		std::vector<divecomputer> new_dcs;
+		for (size_t dc_idx = 0; dc_idx < src.dcs.size(); ++dc_idx) {
+			const auto &src_dc = src.dcs[dc_idx];
+			divecomputer out_dc = src_dc;
+			out_dc.samples.clear();
+			out_dc.events.clear();
+			out_dc.when = src_dc.when ? src_dc.when + t0 : 0;
+			out_dc.maxdepth = 0_m;
+			out_dc.meandepth = 0_m;
+			out_dc.duration = 0_sec;
+			out_dc.watertemp = 0_K;
+
+			if (dc_idx == 0) {
+				out_dc.samples.assign(primary.samples.begin() + seg.begin, primary.samples.begin() + seg.end);
+			} else {
+				for (const auto &s : src_dc.samples) {
+					if (s.time.seconds >= t0 && s.time.seconds <= t1)
+						out_dc.samples.push_back(s);
+				}
+				if (out_dc.samples.empty())
+					continue;
+			}
+
+			for (auto &s : out_dc.samples)
+				s.time.seconds -= t0;
+
+			for (const auto &ev : src_dc.events) {
+				if (ev.time.seconds >= t0 && ev.time.seconds <= t1) {
+					struct event ev_copy = ev;
+					ev_copy.time.seconds -= t0;
+					out_dc.events.push_back(ev_copy);
+				}
+			}
+
+			new_dcs.push_back(std::move(out_dc));
+		}
+
+		d->dcs = std::move(new_dcs);
+
+		const int32_t next_origin = (idx + 1 < origins.size()) ? origins[idx + 1] : std::numeric_limits<int32_t>::max();
+		for (const auto &pic : src.pictures) {
+			const int32_t p_time = pic.offset.seconds;
+			bool owns_pic = false;
+			if (idx == 0 && p_time < next_origin)
+				owns_pic = true;
+			else if (idx > 0 && p_time >= t0 && p_time < next_origin)
+				owns_pic = true;
+
+			if (owns_pic) {
+				struct picture pic_copy = pic;
+				pic_copy.offset.seconds = p_time - t0;
+				d->pictures.push_back(pic_copy);
+			}
+		}
+
+		d->mintemp = 0_K;
+		d->maxtemp = 0_K;
+		d->watertemp = 0_K;
+		d->maxdepth = 0_m;
+		d->meandepth = 0_m;
+		d->duration = 0_sec;
+
+		force_fixup_dive(*d);
+		result.push_back(std::move(d));
+	}
+
+	return result;
 }
 
 /*

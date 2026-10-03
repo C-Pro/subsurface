@@ -29,6 +29,7 @@
 #include "desktop-widgets/simplewidgets.h"
 #include "desktop-widgets/mapwidget.h"
 #include "desktop-widgets/tripselectiondialog.h"
+#include "desktop-widgets/freedivesessiondialog.h"
 
 DiveListView::DiveListView(QWidget *parent) : QTreeView(parent),
 	currentLayout(DiveTripModelBase::TREE),
@@ -626,6 +627,34 @@ void DiveListView::splitDives()
 		Command::splitDives(d, duration_t{ .seconds = -1});
 }
 
+void DiveListView::processFreediveSession()
+{
+	std::vector<dive *> dives = getDiveSelection();
+	if (dives.size() != 1)
+		return;
+	dive *d = dives[0];
+	if (!d || d->dcs.empty() || d->dcs[0].divemode != FREEDIVE)
+		return;
+
+	auto splits = divelog.dives.split_freedive_session(*d);
+	if (splits.size() < 2) {
+		QMessageBox::information(this, tr("Process Freedive Session"),
+			tr("No separate freedives detected in this session (less than 2 dives found)."));
+		return;
+	}
+
+	FreediveSessionDialog dialog(d, splits, MainWindow::instance());
+	if (dialog.exec() != QDialog::Accepted)
+		return;
+
+	dive_site *existing = dialog.existingSite();
+	std::unique_ptr<dive_site> newSite = dialog.takeNewSite();
+	if (!existing && !newSite)
+		return;
+
+	Command::splitFreediveSession(d, std::move(splits), existing, std::move(newSite));
+}
+
 void DiveListView::addDivesToTrip()
 {
 	TripSelectionDialog dialog(MainWindow::instance());
@@ -807,6 +836,8 @@ void DiveListView::contextMenuEvent(QContextMenuEvent *event)
 		popup.addAction(tr("Renumber dive(s)","",amount_selected), this, &DiveListView::renumberDives);
 		popup.addAction(tr("Shift dive times"), this, &DiveListView::shiftTimes);
 		popup.addAction(tr("Split selected dives"), this, &DiveListView::splitDives);
+		if (amount_selected == 1 && d && !d->dcs.empty() && d->dcs[0].divemode == FREEDIVE)
+			popup.addAction(tr("Process freedive session into trip..."), this, &DiveListView::processFreediveSession);
 		popup.addAction(tr("Load media from file(s)"), this, &DiveListView::loadImages);
 		popup.addAction(tr("Load media from web"), this, &DiveListView::loadWebImages);
 	}

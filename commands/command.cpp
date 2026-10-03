@@ -73,6 +73,14 @@ void splitDives(dive *d, duration_t time)
 	execute(new SplitDives(d, time));
 }
 
+void splitFreediveSession(dive *originalDive,
+			  std::vector<std::unique_ptr<dive>> splitDives,
+			  dive_site *existingSite,
+			  std::unique_ptr<dive_site> newSite)
+{
+	execute(new SplitFreediveSession(originalDive, std::move(splitDives), existingSite, std::move(newSite)));
+}
+
 void splitDiveComputer(dive *d, int dc_num)
 {
 	execute(new SplitDiveComputer(d, dc_num));

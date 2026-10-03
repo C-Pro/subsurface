@@ -56,19 +56,27 @@ else()
 	set(TEST_SPECIFIC_LIBRARIES subsurface_models_mobile )
 endif()
 
+add_library(test_command_stub STATIC command_stub.cpp)
+
 # Helper function TEST used to created rules to build, link, install and run tests
 function(TEST NAME FILE)
-	if(DEFINED ARGV2)
+	if(DEFINED ARGV2 AND NOT ARGV2 STREQUAL "COMMANDS")
 		set(CFGARG "CONFIGURATIONS" ${ARGV2})
 	endif()
 	get_filename_component(HDR "${FILE}" NAME_WE)
 	add_executable(${NAME} ${FILE} ${HDR}.h)
+	set(CMD_LIB test_command_stub)
+	if(ARGV2 STREQUAL "COMMANDS" OR ARGV3 STREQUAL "COMMANDS")
+		set(CMD_LIB subsurface_commands)
+	endif()
+
 	target_link_libraries(
 		${NAME}
 		subsurface_backend_shared
 		${TEST_SPECIFIC_LIBRARIES}
 		subsurface_corelib
 		RESOURCE_LIBRARY
+		${CMD_LIB}
 		${QT_TEST_LIBRARIES}
 		${SUBSURFACE_LINK_LIBRARIES}
 		)
@@ -136,6 +144,7 @@ TEST(TestPicture testpicture.cpp)
 set(TEST_PICTURE TestPicture)
 endif()
 TEST(TestMerge testmerge.cpp)
+TEST(TestSplitFreedive testsplitfreedive.cpp COMMANDS)
 TEST(TestTagList testtaglist.cpp)
 
 if (SUBSURFACE_TARGET_EXECUTABLE MATCHES "DesktopExecutable" AND NOT NO_PRINTING)

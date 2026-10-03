@@ -49,6 +49,7 @@ slots:
 	void addToTripBelow();
 	void mergeDives();
 	void splitDives();
+	void processFreediveSession();
 	void renumberDives();
 	void addDivesToTrip();
 	void shiftTimes();
